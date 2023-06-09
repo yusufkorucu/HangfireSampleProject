@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.SqlServer;
+using HangfireSample.Job;
 using HangfireSample.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,7 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHangfire(configuration => configuration
        .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
        .UseSimpleAssemblyNameTypeSerializer()
-.UseRecommendedSerializerSettings()
+        .UseRecommendedSerializerSettings()
        .UseSqlServerStorage(builder.Configuration.GetConnectionString("HangfireConnection"), new SqlServerStorageOptions
        {
            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
@@ -19,7 +20,7 @@ builder.Services.AddHangfire(configuration => configuration
        }));
 
 builder.Services.AddHangfireServer();
-builder.Services.AddScoped<ICargoService,CargoService>();
+builder.Services.AddScoped<ICargoService, CargoService>();
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -37,7 +38,19 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
-app.UseHangfireDashboard("/dashboard");
+app.UseHangfireDashboard("/hangfire", new DashboardOptions()
+{
+    DashboardTitle = "Hangfire Dashboard",
+    Authorization = new[]{
+    new HangfireBasicAuthenticationFilter.HangfireCustomBasicAuthenticationFilter{
+        User = builder.Configuration.GetSection("HangfireCredentials:UserName").Value,
+        Pass = builder.Configuration.GetSection("HangfireCredentials:Password").Value
+    }}
+});
+
+RecurringJob.AddOrUpdate<CargoJob>("SendCargo", x => x.SendToCargo(), "*/10 * * * *", TimeZoneInfo.Local);
+RecurringJob.AddOrUpdate<CargoJob>("UpdateCargoStatus", x => x.UpdateCargoStatus(), "*/5 * * * *", TimeZoneInfo.Local);
+
 app.MapControllers();
 
 app.Run();
